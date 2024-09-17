@@ -1755,7 +1755,8 @@ def Contig_Extender_for_Polish_V02(ProjectName, MinLengthThreshold, MaxLengthThr
 
 def SpadesDeNovo(ExtractedRead01, ExtractedRead02, ProjectName, CombinedMinionReadFile = None, ExtractedRead03 = None, ExtractedRead04 = None, threads = "3", RAM = "10", Kmers = "21,33,55,75,99"):
     OutputDirectory = ProjectName + "_DeNovoAssembly"
-    Assembled_Scaffold_File = OutputDirectory + "/scaffolds.fasta"
+    Scaffold_File = OutputDirectory + "/scaffolds.fasta"
+    Contig_File = OutputDirectory + "/contigs.fasta"
     
     if CombinedMinionReadFile == None:
         MinionString = ""
@@ -1773,16 +1774,33 @@ def SpadesDeNovo(ExtractedRead01, ExtractedRead02, ProjectName, CombinedMinionRe
     #os.system("spades.py --careful " + Read_String + MinionString + " -t " + str(threads) + " -m " + str(RAM) + " -k " + str(Kmers) + " -o " + OutputDirectory)
     os.system("spades.py --careful " + Read_String + MinionString + " -t " + str(threads) + " -k " + str(Kmers) + " -o " + OutputDirectory)
     
-    
     print("***De Novo Assembly_Complete_***")
+
+    # Check for scaffolds file first, otherwise fall back to contigs file
+    if os.path.exists(Scaffold_File):
+        Assembled_Scaffold_File = Scaffold_File
+    elif os.path.exists(Contig_File):
+        print("***Scaffolds file missing, using Contigs file instead***")
+        Assembled_Scaffold_File = Contig_File
+    else:
+        print("***Error: Neither scaffolds.fasta nor contigs.fasta found***")
+        return None
     
     return Assembled_Scaffold_File
+
 
 def RemoveSwineContigs(DeNovo_Scaffold, ProjectName):
     BlastInput =  DeNovo_Scaffold
     BlastReference = "/app/06_Sus_scrofa_Reference/Sus_scrofa.Sscrofa11.1.dna.toplevel.fa" #docker container file
     BlastOutput = ProjectName + "_predict_swine_contigs_blastoutput.csv"
-    ASFV_only_Scaffold = ProjectName + "_scaffolds.fasta"
+    OutputDirectory = ProjectName + "_DeNovoAssembly/"
+
+    Scaffold_File_Output = os.path.join(OutputDirectory, "scaffolds.fasta")
+    Contig_File_Output = os.path.join(OutputDirectory, "contigs.fasta")
+    if os.path.exists(Scaffold_File_Output):
+        ASFV_only_Scaffold = ProjectName + "_scaffolds.fasta"
+    else:
+        ASFV_only_Scaffold = ProjectName + "_contigs.fasta"       
     #
     print("***Checking for Swine Contigs in Assembly***")
     os.system(str(NcbiblastnCommandline(cmd='blastn', query = BlastInput, subject= BlastReference, max_hsps = 1, max_target_seqs = 1, out = BlastOutput, outfmt = "6 qseqid sseqid evalue pident bitscore length qlen slen qstart qend sstart send", evalue=0.001)))
@@ -1790,8 +1808,13 @@ def RemoveSwineContigs(DeNovo_Scaffold, ProjectName):
     if Empty_File_Check(BlastOutput) == True:
         # Move and Rename Scaffold file for retention
         print('No Swine Contigs')
-        MoveReferenceFile(ReferenceDirectory="" + ProjectName + "_DeNovoAssembly/", PredictedReference = "scaffolds", FileType=".fasta")
-        Rename_File(OldFile = "scaffolds.fasta", NewFile = ASFV_only_Scaffold)
+        if os.path.exists(Scaffold_File_Output):
+            MoveReferenceFile(ReferenceDirectory="" + ProjectName + "_DeNovoAssembly/", PredictedReference = "scaffolds", FileType=".fasta")
+            Rename_File(OldFile = "scaffolds.fasta", NewFile = ASFV_only_Scaffold)
+        else:
+            MoveReferenceFile(ReferenceDirectory="" + ProjectName + "_DeNovoAssembly/", PredictedReference = "contigs", FileType=".fasta")
+            Rename_File(OldFile = "contigs.fasta", NewFile = ASFV_only_Scaffold)
+
         return ASFV_only_Scaffold
     else:
         print('***Removing Swine Contigs***')
